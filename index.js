@@ -126,6 +126,9 @@ document.addEventListener('keyup', (e) => {
 function updateMovement() {
     let moved = false;
     let speed = 0.09;
+    // Relative Directional Intent (Sync movement with camera)
+    let moveX = 0;
+    let moveZ = 0;
 
     // Fly Movement (Space)
     if (keys.Space) {
@@ -141,25 +144,35 @@ function updateMovement() {
     
     // Foward Movement (W)
     if (keys.W) {
-        dz -= speed;
+        moveZ  -= speed;
         moved = true;
     }
 
     // Backward Movement (S)
     if (keys.S) {
-        dz += speed;
+        moveZ += speed;
         moved = true;
     }
 
     // Left Movement (A)
     if (keys.A) {
-        dx += speed;
+        moveX += speed;
         moved = true;
     }
 
     // Right Movement (D)
     if (keys.D) {
-        dx -= speed;
+        moveX -= speed;
+        moved = true;
+    }
+   
+    // If horizontal mov = true then rotate the dir vector by yaw
+    if (moveX !== 0 || moveZ !== 0) {
+        const cos = Math.cos(-camYaw);
+        const sin = Math.sin(-camYaw);
+        
+        dx += moveX * cos - moveZ * sin;
+        dz += moveX * sin + moveZ * cos;
         moved = true;
     }
 
@@ -171,6 +184,7 @@ function updateMovement() {
             transformed = rotate_yz(transformed, camPitch);
             point(screen(project(transformed)));
         }
+        mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
 }
@@ -180,12 +194,14 @@ let camYaw = 0;
 let camPitch = 0;
 let mouseMoved = false;
 
+// Locks Mouse Until Esc Clicked
 game.addEventListener('click', () => {
     if (document.pointerLockElement !== game) {
         game.requestPointerLock();
     }
 });
 
+// Moves the Camera (Gives the Pitch & Yaw)
 document.addEventListener('mousemove', (e) => {
     if (document.pointerLockElement === game) {
         let sensitivity = 0.003;
