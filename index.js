@@ -35,9 +35,9 @@ function project({x,y,z}){
     }
 }
 
-// Z Offset
-function translate_z({x,y,z}, dz){
-    return {x,y,z: z+dz};
+// XYZ Offset
+function translate_xyz({x,y,z},dx,dy,dz){
+    return {x: x+dx,y: y+dy,z: z+dz};
 }
 
 //vertices - Cube
@@ -54,8 +54,86 @@ const vs = [
 ]
 
 let dz = 2; //Track z offset
+let dy = 0;
+let dx = 0;
 
 clear()
 for (const v of vs){
-    point(screen(project(translate_z(v,dz))));
+    point(screen(project(translate_xyz(v,dx,dy,dz))));
 }
+
+const keys = {
+    Space: false,
+    Shift: false,
+    W: false,
+    S: false,
+    A: false,
+    D: false
+};
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === ' ') keys.Space = true;
+    if (e.key === 'Shift') keys.Shift = true;
+    if (e.key.toLowerCase() === 'w') keys.W = true;
+    if (e.key.toLowerCase() === 's') keys.S = true;
+    if (e.key.toLowerCase() === 'a') keys.A = true;
+    if (e.key.toLowerCase() === 'd') keys.D = true;
+});
+
+document.addEventListener('keyup', (e) => {
+    if (e.key === ' ') keys.Space = false;
+    if (e.key === 'Shift') keys.Shift = false;
+    if (e.key.toLowerCase() === 'w') keys.W = false;
+    if (e.key.toLowerCase() === 's') keys.S = false;
+    if (e.key.toLowerCase() === 'a') keys.A = false;
+    if (e.key.toLowerCase() === 'd') keys.D = false;
+});
+
+function updateMovement() {
+    let moved = false;
+
+    // Fly Movement (Space)
+    if (keys.Space) {
+        dy -= 0.05;
+        moved = true;
+    }
+    
+    // Descent Movement (Shift)
+    if (keys.Shift) {
+        dy += 0.05;
+        moved = true;
+    }
+    
+    // Foward Movement (W)
+    if (keys.W) {
+        dz -= 0.05;
+        moved = true;
+    }
+
+    // Backward Movement (S)
+    if (keys.S) {
+        dz += 0.05;
+        moved = true;
+    }
+
+    // Left Movement (A)
+    if (keys.A) {
+        dx += 0.05;
+        moved = true;
+    }
+
+    // Right Movement (D)
+    if (keys.D) {
+        dx -= 0.05;
+        moved = true;
+    }
+
+    if (moved) {
+        clear();
+        for (const v of vs) {
+            point(screen(project(translate_xyz(v, dx, dy, dz))));
+        }
+    }
+    requestAnimationFrame(updateMovement);
+}
+requestAnimationFrame(updateMovement);
