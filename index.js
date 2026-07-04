@@ -40,6 +40,39 @@ function translate_xyz({x,y,z},dx,dy,dz){
     return {x: x+dx,y: y+dy,z: z+dz};
 }
 
+// Rotate xz
+function rotate_xz({x,y,z},angle){
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return{
+        x: x*c-z*s,
+        y,
+        z: x*s+z*c
+    }
+}
+
+// Rotate yz
+function rotate_yz({x, y, z}, angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return {
+        x,
+        y: y * c - z * s,
+        z: y * s + z * c
+    };
+}
+
+// Rotate xy
+function rotate_xy({x, y, z}, angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return {
+        x: x * c - y * s,
+        y: x * s + y * c,
+        z
+    };
+}
+
 //vertices - Cube
 const vs = [
     {x:0.5, y:0.5, z: 0.5}, //@ z=0 the object is in the eye
@@ -53,7 +86,8 @@ const vs = [
     {x:0.5, y:-0.5, z: -0.5}
 ]
 
-let dz = 2; //Track z offset
+// Camera Position
+let dz = 2;
 let dy = 0;
 let dx = 0;
 
@@ -91,49 +125,77 @@ document.addEventListener('keyup', (e) => {
 
 function updateMovement() {
     let moved = false;
+    let speed = 0.09;
 
     // Fly Movement (Space)
     if (keys.Space) {
-        dy -= 0.05;
+        dy -= speed;
         moved = true;
     }
     
     // Descent Movement (Shift)
     if (keys.Shift) {
-        dy += 0.05;
+        dy += speed;
         moved = true;
     }
     
     // Foward Movement (W)
     if (keys.W) {
-        dz -= 0.05;
+        dz -= speed;
         moved = true;
     }
 
     // Backward Movement (S)
     if (keys.S) {
-        dz += 0.05;
+        dz += speed;
         moved = true;
     }
 
     // Left Movement (A)
     if (keys.A) {
-        dx += 0.05;
+        dx += speed;
         moved = true;
     }
 
     // Right Movement (D)
     if (keys.D) {
-        dx -= 0.05;
+        dx -= speed;
         moved = true;
     }
 
-    if (moved) {
+    if (moved || mouseMoved) {
         clear();
         for (const v of vs) {
-            point(screen(project(translate_xyz(v, dx, dy, dz))));
+            let transformed = translate_xyz(v, dx, dy, dz);
+            transformed = rotate_xz(transformed, camYaw);
+            transformed = rotate_yz(transformed, camPitch);
+            point(screen(project(transformed)));
         }
     }
     requestAnimationFrame(updateMovement);
 }
 requestAnimationFrame(updateMovement);
+
+let camYaw = 0;
+let camPitch = 0;
+let mouseMoved = false;
+
+game.addEventListener('click', () => {
+    if (document.pointerLockElement !== game) {
+        game.requestPointerLock();
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement === game) {
+        let sensitivity = 0.003;
+        camYaw += e.movementX * sensitivity;
+        camPitch -= e.movementY * sensitivity;
+
+        let maxPitch = Math.PI / 2.1;
+        if (camPitch > maxPitch) camPitch = maxPitch;
+        if (camPitch < -maxPitch) camPitch = -maxPitch;
+
+        mouseMoved = true;
+    }
+});
