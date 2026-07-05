@@ -86,14 +86,58 @@ const vs = [
     {x:0.5, y:-0.5, z: -0.5}
 ]
 
+const faces = [
+    {vs: [4,5,6,7]},
+    {vs: [0,1,2,3]},
+    {vs: [0,1,5,4]},
+    {vs: [2,3,7,6]},
+    {vs: [1,2,6,5]},
+    {vs: [0,3,7,4]}
+]
+
+function drawFace(face, textureImage){
+    const pts = face.vs.map(i => screen(project(rotate_yz(rotate_xz(translate_xyz(vs[i],dx,dy,dz),camYaw),camPitch))));
+    
+    ctx.save();
+    // Traces the patch of the face to transform
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.closePath();
+    // Turn Path into a mask
+    ctx.clip();
+
+    let minX = Math.min(...pts.map(p => p.x));
+    let minY = Math.min(...pts.map(p => p.y));
+    let maxX = Math.max(...pts.map(p => p.x));
+    let maxY = Math.max(...pts.map(p => p.y));
+    
+    ctx.drawImage(textureImage, minX, minY, maxX - minX, maxY - minY);
+
+    ctx.restore(); // Removed the clip mask to avoid big mess!
+}
+
 // Camera Position
 let dz = 2;
 let dy = 0;
 let dx = 0;
+let camYaw = 0;
+let camPitch = 0;
+let mouseMoved = false;
+
+const img = new Image();
+img.src = "./textures/dirt.png";
+// When upscaled, texture becomes blurry.
+ctx.imageSmoothingEnabled = false;
 
 clear()
 for (const v of vs){
     point(screen(project(translate_xyz(v,dx,dy,dz))));
+}
+for (const f of faces) {
+    drawFace(f,img);
 }
 
 const keys = {
@@ -184,15 +228,14 @@ function updateMovement() {
             transformed = rotate_yz(transformed, camPitch);
             point(screen(project(transformed)));
         }
+        for (const f of faces) {
+            drawFace(f,img);
+        }
         mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
 }
 requestAnimationFrame(updateMovement);
-
-let camYaw = 0;
-let camPitch = 0;
-let mouseMoved = false;
 
 // Locks Mouse Until Esc Clicked
 game.addEventListener('click', () => {
@@ -215,3 +258,5 @@ document.addEventListener('mousemove', (e) => {
         mouseMoved = true;
     }
 });
+
+
