@@ -85,7 +85,7 @@ const vs = [
     {x:-0.5, y:-0.5, z: -0.5},
     {x:0.5, y:-0.5, z: -0.5}
 ]
-
+//TODO - Render only 1 to 3 visible faces only to optimize fps + depending on the distance update triangles (distance = less triangles)
 const faces = [
     {vs: [4,5,6,7]},
     // {vs: [0,1,2,3]},
@@ -145,7 +145,20 @@ function bilerp(p0, p1, p2, p3, u, v){
 
 // Draws a texture and splits into (cols*rows*2) triangles per quad
 function drawFace(face, textureImage, cols, rows){
-    const pts = face.vs.map(i => screen(project(rotate_yz(rotate_xz(translate_xyz(vs[i],dx,dy,dz),camYaw),camPitch))));
+    
+    const NEAR_PLANE = 0.1;
+    //Transform the 3D points FIRST (without projecting) to check their Z depth
+    const transformedPoints = face.vs.map(i => {
+        return rotate_yz(rotate_xz(translate_xyz(vs[i], dx, dy, dz), camYaw), camPitch);
+    });
+    //If ANY point is behind the camera, skip the whole face
+    for (const p of transformedPoints) {
+        if (p.z < NEAR_PLANE) {
+            return;
+        }
+    }
+
+    const pts = transformedPoints.map(p => screen(project(p)));
 
     const w = textureImage.width;
     const h = textureImage.height;
@@ -285,6 +298,13 @@ function updateMovement() {
             let transformed = translate_xyz(v, dx, dy, dz);
             transformed = rotate_xz(transformed, camYaw);
             transformed = rotate_yz(transformed, camPitch);
+
+            //Near-plane clipping - this removes hallucination mirror effect when going opposite to object
+            const NEAR_PLANE = 0.1; 
+            if (transformed.z < NEAR_PLANE) {
+                continue;
+            }
+
             point(screen(project(transformed)));
         }
         for (const f of faces) {
