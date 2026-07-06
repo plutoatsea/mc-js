@@ -88,35 +88,94 @@ const vs = [
 
 const faces = [
     {vs: [4,5,6,7]},
-    {vs: [0,1,2,3]},
-    {vs: [0,1,5,4]},
-    {vs: [2,3,7,6]},
-    {vs: [1,2,6,5]},
-    {vs: [0,3,7,4]}
+    // {vs: [0,1,2,3]},
+    // {vs: [0,1,5,4]},
+    // {vs: [2,3,7,6]},
+    // {vs: [1,2,6,5]},
+    // {vs: [0,3,7,4]}
 ]
 
-function drawFace(face, textureImage){
-    const pts = face.vs.map(i => screen(project(rotate_yz(rotate_xz(translate_xyz(vs[i],dx,dy,dz),camYaw),camPitch))));
-    
-    ctx.save();
-    // Traces the patch of the face to transform
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x, pts[i].y);
+// Adjusts Triangle Tessellation in-between gaps (amount = 0.5 to 1)
+function expandTriangle(dx0, dy0, dx1, dy1, dx2, dy2, amount){
+    const cx = (dx0 + dx1 + dx2) / 3;
+    const cy = (dy0 + dy1 + dy2) / 3;
+
+    function push(x, y){
+        const vx = x - cx;
+        const vy = y - cy;
+        const len = Math.sqrt(vx * vx + vy * vy) || 1;
+        return { x: x + (vx / len) * amount, y: y + (vy / len) * amount };
     }
+
+    return [push(dx0, dy0), push(dx1, dy1), push(dx2, dy2)];
+}
+
+// Triangle Tessellation
+function drawTriangle(img, sx0, sy0, sx1, sy1, sx2, sy2, dx0, dy0, dx1, dy1, dx2, dy2){
+    const denom = sx0 * (sy1 - sy2) + sx1 * (sy2 - sy0) + sx2 * (sy0 - sy1);
+
+    const a = (dx0 * (sy1 - sy2) + dx1 * (sy2 - sy0) + dx2 * (sy0 - sy1)) / denom;
+    const b = (dy0 * (sy1 - sy2) + dy1 * (sy2 - sy0) + dy2 * (sy0 - sy1)) / denom;
+    const c = (dx0 * (sx2 - sx1) + dx1 * (sx0 - sx2) + dx2 * (sx1 - sx0)) / denom;
+    const d = (dy0 * (sx2 - sx1) + dy1 * (sx0 - sx2) + dy2 * (sx1 - sx0)) / denom;
+    const e = (dx0 * (sx1 * sy2 - sx2 * sy1) + dx1 * (sx2 * sy0 - sx0 * sy2) + dx2 * (sx0 * sy1 - sx1 * sy0)) / denom;
+    const f = (dy0 * (sx1 * sy2 - sx2 * sy1) + dy1 * (sx2 * sy0 - sx0 * sy2) + dy2 * (sx0 * sy1 - sx1 * sy0)) / denom;
+    //Expand triangle to hide gaps
+    const [e0, e1, e2] = expandTriangle(dx0, dy0, dx1, dy1, dx2, dy2, 0.6);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(e0.x, e0.y);
+    ctx.lineTo(e1.x, e1.y);
+    ctx.lineTo(e2.x, e2.y);
     ctx.closePath();
-    // Turn Path into a mask
     ctx.clip();
 
-    let minX = Math.min(...pts.map(p => p.x));
-    let minY = Math.min(...pts.map(p => p.y));
-    let maxX = Math.max(...pts.map(p => p.x));
-    let maxY = Math.max(...pts.map(p => p.y));
-    
-    ctx.drawImage(textureImage, minX, minY, maxX - minX, maxY - minY);
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+}
 
-    ctx.restore(); // Removed the clip mask to avoid big mess!
+// Bilinear interpolation - gets the 4 corners of quad p0..3 (ex: bp(p0..3,1,1)=1 point, bp(p0..3,0,0)=2point & bp(p0..3,0.5,0.5)=quad centre)
+function bilerp(p0, p1, p2, p3, u, v){
+    const top = { x: p0.x + (p1.x - p0.x) * u, y: p0.y + (p1.y - p0.y) * u };
+    const bottom = { x: p3.x + (p2.x - p3.x) * u, y: p3.y + (p2.y - p3.y) * u };
+    return { x: top.x + (bottom.x - top.x) * v, y: top.y + (bottom.y - top.y) * v };
+}
+
+// Draws a texture and splits into (cols*rows*2) triangles per quad
+function drawFace(face, textureImage, cols, rows){
+    const pts = face.vs.map(i => screen(project(rotate_yz(rotate_xz(translate_xyz(vs[i],dx,dy,dz),camYaw),camPitch))));
+
+    const w = textureImage.width;
+    const h = textureImage.height;
+
+    const s0 = { x: 0, y: 0 };
+    const s1 = { x: w, y: 0 };
+    const s2 = { x: w, y: h };
+    const s3 = { x: 0, y: h };
+
+    for (let row = 0; row < rows; row++){
+        for (let col = 0; col < cols; col++){
+            const u0 = col / cols;
+            const u1 = (col + 1) / cols;
+            const v0 = row / rows;
+            const v1 = (row + 1) / rows;
+
+            const dTL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v0);
+            const dTR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v0);
+            const dBR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v1);
+            const dBL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v1);
+
+            const sTL = bilerp(s0, s1, s2, s3, u0, v0);
+            const sTR = bilerp(s0, s1, s2, s3, u1, v0);
+            const sBR = bilerp(s0, s1, s2, s3, u1, v1);
+            const sBL = bilerp(s0, s1, s2, s3, u0, v1);
+
+            drawTriangle(textureImage, sTL.x, sTL.y, sTR.x, sTR.y, sBR.x, sBR.y, dTL.x, dTL.y, dTR.x, dTR.y, dBR.x, dBR.y);
+            drawTriangle(textureImage, sTL.x, sTL.y, sBR.x, sBR.y, sBL.x, sBL.y, dTL.x, dTL.y, dBR.x, dBR.y, dBL.x, dBL.y);
+        }
+    }
 }
 
 // Camera Position
@@ -137,7 +196,7 @@ for (const v of vs){
     point(screen(project(translate_xyz(v,dx,dy,dz))));
 }
 for (const f of faces) {
-    drawFace(f,img);
+    drawFace(f,img,2,2);
 }
 
 const keys = {
@@ -229,7 +288,7 @@ function updateMovement() {
             point(screen(project(transformed)));
         }
         for (const f of faces) {
-            drawFace(f,img);
+            drawFace(f,img,2,2);
         }
         mouseMoved = false;
     }
@@ -258,5 +317,3 @@ document.addEventListener('mousemove', (e) => {
         mouseMoved = true;
     }
 });
-
-
