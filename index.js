@@ -85,14 +85,14 @@ const vs = [
     {x:-0.5, y:-0.5, z: -0.5},
     {x:0.5, y:-0.5, z: -0.5}
 ]
-//TODO - Render only 1 to 3 visible faces only to optimize fps + depending on the distance update triangles (distance = less triangles)
+//TODO - depending on the distance update triangles (distance = less triangles)
 const faces = [
     {vs: [4,5,6,7]},
-    // {vs: [0,1,2,3]},
-    // {vs: [0,1,5,4]},
-    // {vs: [2,3,7,6]},
-    // {vs: [1,2,6,5]},
-    // {vs: [0,3,7,4]}
+    {vs: [0,1,2,3]},
+    {vs: [0,1,5,4]},
+    {vs: [2,3,7,6]},
+    {vs: [1,2,6,5]},
+    {vs: [0,3,7,4]}
 ]
 
 // Adjusts Triangle Tessellation in-between gaps (amount = 0.5 to 1)
@@ -144,47 +144,76 @@ function bilerp(p0, p1, p2, p3, u, v){
 }
 
 // Draws a texture and splits into (cols*rows*2) triangles per quad
-function drawFace(face, textureImage, cols, rows){
-    
+function drawFace(face, textureImage, cols, rows) {
     const NEAR_PLANE = 0.1;
-    //Transform the 3D points FIRST (without projecting) to check their Z depth
+    // all 4 points are transformed to 3D camera space
     const transformedPoints = face.vs.map(i => {
         return rotate_yz(rotate_xz(translate_xyz(vs[i], dx, dy, dz), camYaw), camPitch);
     });
-    //If ANY point is behind the camera, skip the whole face
+    // Near-plane clipping safety check
     for (const p of transformedPoints) {
-        if (p.z < NEAR_PLANE) {
-            return;
-        }
+        if (p.z < NEAR_PLANE) return;
+    }
+    // ADAPTIVE 3D CULLING :))))!!!
+    // Vector A (from point 0 to point 1)
+    const ax = transformedPoints[1].x - transformedPoints[0].x;
+    const ay = transformedPoints[1].y - transformedPoints[0].y;
+    const az = transformedPoints[1].z - transformedPoints[0].z;
+    // Vector B (from point 0 to point 3)
+    const bx = transformedPoints[3].x - transformedPoints[0].x;
+    const by = transformedPoints[3].y - transformedPoints[0].y;
+    const bz = transformedPoints[3].z - transformedPoints[0].z;
+    // 3D Cross Product to find the face's perpendicular Normal Vector (Nx, Ny, Nz)
+    let nx = ay * bz - az * by;
+    let ny = az * bx - ax * bz;
+    let nz = ax * by - ay * bx;
+
+    // Winding-order safety check in order to verify this face's normal actually points
+    // away from the cube's own object-space center, using untransformed vertices.
+    const localP0 = vs[face.vs[0]];
+    const localP1 = vs[face.vs[1]];
+    const localP3 = vs[face.vs[3]];
+    const lax = localP1.x - localP0.x, lay = localP1.y - localP0.y, laz = localP1.z - localP0.z;
+    const lbx = localP3.x - localP0.x, lby = localP3.y - localP0.y, lbz = localP3.z - localP0.z;
+    const lnx = lay * lbz - laz * lby;
+    const lny = laz * lbx - lax * lbz;
+    const lnz = lax * lby - lay * lbx;
+    const lcx = (localP0.x + localP1.x + localP3.x) / 3;
+    const lcy = (localP0.y + localP1.y + localP3.y) / 3;
+    const lcz = (localP0.z + localP1.z + localP3.z) / 3;
+    if (lnx * lcx + lny * lcy + lnz * lcz < 0) {
+        nx = -nx; ny = -ny; nz = -nz;
     }
 
+    // Calculate the center point of the face relative to the camera
+    const cx = (transformedPoints[0].x + transformedPoints[1].x + transformedPoints[2].x + transformedPoints[3].x) / 4;
+    const cy = (transformedPoints[0].y + transformedPoints[1].y + transformedPoints[2].y + transformedPoints[3].y) / 4;
+    const cz = (transformedPoints[0].z + transformedPoints[1].z + transformedPoints[2].z + transformedPoints[3].z) / 4;
+    // 3D Dot Product: Compares the direction of the face to the camera's view line
+    const dotProduct = nx * cx + ny * cy + nz * cz;
+    // If the dot product is positive, the face is pointing away from the camera lens. Skip!!!!
+    if (dotProduct > 0) {
+        return;
+    }
     const pts = transformedPoints.map(p => screen(project(p)));
 
     const w = textureImage.width;
     const h = textureImage.height;
-
-    const s0 = { x: 0, y: 0 };
-    const s1 = { x: w, y: 0 };
-    const s2 = { x: w, y: h };
-    const s3 = { x: 0, y: h };
-
-    for (let row = 0; row < rows; row++){
-        for (let col = 0; col < cols; col++){
+    const s0 = { x: 0, y: 0 }, s1 = { x: w, y: 0 }, s2 = { x: w, y: h }, s3 = { x: 0, y: h };
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
             const u0 = col / cols;
             const u1 = (col + 1) / cols;
             const v0 = row / rows;
             const v1 = (row + 1) / rows;
-
             const dTL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v0);
             const dTR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v0);
             const dBR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v1);
             const dBL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v1);
-
             const sTL = bilerp(s0, s1, s2, s3, u0, v0);
             const sTR = bilerp(s0, s1, s2, s3, u1, v0);
             const sBR = bilerp(s0, s1, s2, s3, u1, v1);
             const sBL = bilerp(s0, s1, s2, s3, u0, v1);
-
             drawTriangle(textureImage, sTL.x, sTL.y, sTR.x, sTR.y, sBR.x, sBR.y, dTL.x, dTL.y, dTR.x, dTR.y, dBR.x, dBR.y);
             drawTriangle(textureImage, sTL.x, sTL.y, sBR.x, sBR.y, sBL.x, sBL.y, dTL.x, dTL.y, dBR.x, dBR.y, dBL.x, dBL.y);
         }
@@ -293,6 +322,7 @@ function updateMovement() {
     }
 
     if (moved || mouseMoved) {
+        //console.log("CAMERA: ("+dx+", "+dy+", "+dz+") PITCH:"+camPitch+" YAW:"+camYaw); //THIS TRACKS CAMERA POS&PITCH&YAW
         clear();
         for (const v of vs) {
             let transformed = translate_xyz(v, dx, dy, dz);
