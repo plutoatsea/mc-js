@@ -220,6 +220,20 @@ function drawFace(face, textureImage, cols, rows) {
     }
 }
 
+// Returns a grid size dynamically based on the distance to put triangles
+function getGridResolution(camX, camY, camZ, objX, objY, objZ) {
+    const dx = camX - objX;
+    const dy = camY - objY;
+    const dz = camZ - objZ;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    const t = (dist - MIN_DIST) / (MAX_DIST - MIN_DIST);
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    const grid = Math.round(MAX_GRID - clampedT * (MAX_GRID - MIN_GRID));
+    return grid;
+}
+
 // Camera Position
 let dz = 2;
 let dy = 0;
@@ -227,6 +241,11 @@ let dx = 0;
 let camYaw = 0;
 let camPitch = 0;
 let mouseMoved = false;
+// Detail (Level of detail) Config - closer = more triangles, far = less triangles
+const MIN_GRID = 0.5;
+const MAX_GRID = 6;
+const MIN_DIST = 2;
+const MAX_DIST = 6;
 
 const img = new Image();
 img.src = "./textures/dirt.png";
@@ -337,8 +356,9 @@ function updateMovement() {
 
             point(screen(project(transformed)));
         }
+        const grid = getGridResolution(dx, dy, dz, 0, 0, 0);
         for (const f of faces) {
-            drawFace(f,img,2,2);
+            drawFace(f,img,grid,grid);
         }
         mouseMoved = false;
     }
