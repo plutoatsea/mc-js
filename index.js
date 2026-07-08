@@ -12,19 +12,6 @@ function clear(){
     ctx.fillRect(0,0,game.width,game.height)
 }
 
-//vertices - Cube
-const vs = [
-    {x:0.5, y:0.5, z: 0.5}, //@ z=0 the object is in the eye
-    {x:-0.5, y:0.5, z: 0.5},
-    {x:-0.5, y:-0.5, z: 0.5},
-    {x:0.5, y:-0.5, z: 0.5},
-
-    {x:0.5, y:0.5, z: -0.5},
-    {x:-0.5, y:0.5, z: -0.5},
-    {x:-0.5, y:-0.5, z: -0.5},
-    {x:0.5, y:-0.5, z: -0.5}
-]
-
 // Adjusts Triangle Tessellation in-between gaps (amount = 0.5 to 1)
 function expandTriangle(dx0, dy0, dx1, dy1, dx2, dy2, amount){
     const cx = (dx0 + dx1 + dx2) / 3;
@@ -74,8 +61,9 @@ function bilerp(p0, p1, p2, p3, u, v){
 }
 
 // Draws a texture and splits into (cols*rows*2) triangles per quad
-function drawFace(face, textureImage, cols, rows) {
+function drawFace(block, face, textureImage, cols, rows) {
     const NEAR_PLANE = 0.1;
+    const vs = block.vs;
     // all 4 points are transformed to 3D camera space
     const transformedPoints = face.vs.map(i => {
         return rotate_yz(rotate_xz(translate_xyz(vs[i], dx, dy, dz), camYaw), camPitch);
@@ -100,6 +88,12 @@ function drawFace(face, textureImage, cols, rows) {
 
     // Winding-order safety check in order to verify this face's normal actually points
     // away from the cube's own object-space center, using untransformed vertices.
+    const trueCenter = vs.reduce((acc, v) => ({
+        x: acc.x + v.x / vs.length,
+        y: acc.y + v.y / vs.length,
+        z: acc.z + v.z / vs.length
+    }), { x: 0, y: 0, z: 0 });
+
     const localP0 = vs[face.vs[0]];
     const localP1 = vs[face.vs[1]];
     const localP3 = vs[face.vs[3]];
@@ -108,9 +102,9 @@ function drawFace(face, textureImage, cols, rows) {
     const lnx = lay * lbz - laz * lby;
     const lny = laz * lbx - lax * lbz;
     const lnz = lax * lby - lay * lbx;
-    const lcx = (localP0.x + localP1.x + localP3.x) / 3;
-    const lcy = (localP0.y + localP1.y + localP3.y) / 3;
-    const lcz = (localP0.z + localP1.z + localP3.z) / 3;
+    const lcx = (localP0.x + localP1.x + localP3.x) / 3 - trueCenter.x;
+    const lcy = (localP0.y + localP1.y + localP3.y) / 3 - trueCenter.y;
+    const lcz = (localP0.z + localP1.z + localP3.z) / 3 - trueCenter.z;
     if (lnx * lcx + lny * lcy + lnz * lcz < 0) {
         nx = -nx; ny = -ny; nz = -nz;
     }
@@ -151,10 +145,14 @@ function drawFace(face, textureImage, cols, rows) {
 }
 
 // Returns a grid size dynamically based on the distance to put triangles
-function getGridResolution(camX, camY, camZ, objX, objY, objZ) {
-    const dx = camX - objX;
-    const dy = camY - objY;
-    const dz = camZ - objZ;
+function getGridResolution(camX, camY, camZ, {x: objX, y: objY, z: objZ}) {
+    const realCamX = -camX;
+    const realCamY = -camY;
+    const realCamZ = -camZ;
+
+    const dx = realCamX - objX;
+    const dy = realCamY - objY;
+    const dz = realCamZ - objZ;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     const t = (dist - MIN_DIST) / (MAX_DIST - MIN_DIST);
@@ -164,10 +162,10 @@ function getGridResolution(camX, camY, camZ, objX, objY, objZ) {
     return grid;
 }
 
-function render(){
+function render(block){
     //console.log("CAMERA: ("+dx+", "+dy+", "+dz+") PITCH:"+camPitch+" YAW:"+camYaw); //THIS TRACKS CAMERA POS&PITCH&YAW
     clear();
-    for (const v of vs) {
+    for (const v of block.vs) {
         let transformed = translate_xyz(v, dx, dy, dz);
         transformed = rotate_xz(transformed, camYaw);
         transformed = rotate_yz(transformed, camPitch);
@@ -180,9 +178,9 @@ function render(){
 
         point(screen(project(transformed)));
     }
-    const grid = getGridResolution(dx, dy, dz, 0, 0, 0); // TO DO - change 0s to obj xyz
+    const grid = getGridResolution(dx, dy, dz, block.position); // TO DO - dy,dx,dz to camera.pos
     for (const f of Block.faces) {
-        drawFace(f,img,grid,grid);
+        drawFace(block,f,img,grid,grid);
     }
 }
 
@@ -204,7 +202,7 @@ const img = new Image();
 img.src = block.texture;
 // When upscaled, texture becomes blurry.
 ctx.imageSmoothingEnabled = false;
-render();
+render(block);
 
 const keys = {
     Space: false,
@@ -287,7 +285,7 @@ function updateMovement() {
     }
 
     if (moved || mouseMoved) {
-        render();
+        render(block);
         mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
