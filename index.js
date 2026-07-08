@@ -12,67 +12,6 @@ function clear(){
     ctx.fillRect(0,0,game.width,game.height)
 }
 
-// Vertice as a square of size s @ (x,y) point
-function point({x, y}){
-    const s = 10;
-    ctx.fillStyle = FOREGROUND
-    ctx.fillRect(x - s/2, y - s/2, s, s)
-}
-
-// Move Vertice to the middle of the canvas (middle@x:0,y:0)
-function screen(p){
-    return{ // -1 ..1 -> 0..2 -> 0..1 -> 0..w
-        x: (p.x + 1)/2*game.width,
-        y: (1-(p.y + 1)/2)*game.height //y is flipped
-    }
-}
-
-// Based on a formula x'=x/z and y'=y/z from point (x,y,z)
-function project({x,y,z}){
-    return {
-        x: x/z,
-        y: y/z
-    }
-}
-
-// XYZ Offset
-function translate_xyz({x,y,z},dx,dy,dz){
-    return {x: x+dx,y: y+dy,z: z+dz};
-}
-
-// Rotate xz
-function rotate_xz({x,y,z},angle){
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    return{
-        x: x*c-z*s,
-        y,
-        z: x*s+z*c
-    }
-}
-
-// Rotate yz
-function rotate_yz({x, y, z}, angle) {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    return {
-        x,
-        y: y * c - z * s,
-        z: y * s + z * c
-    };
-}
-
-// Rotate xy
-function rotate_xy({x, y, z}, angle) {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    return {
-        x: x * c - y * s,
-        y: x * s + y * c,
-        z
-    };
-}
-
 //vertices - Cube
 const vs = [
     {x:0.5, y:0.5, z: 0.5}, //@ z=0 the object is in the eye
@@ -84,15 +23,6 @@ const vs = [
     {x:-0.5, y:0.5, z: -0.5},
     {x:-0.5, y:-0.5, z: -0.5},
     {x:0.5, y:-0.5, z: -0.5}
-]
-//TODO - depending on the distance update triangles (distance = less triangles)
-const faces = [
-    {vs: [4,5,6,7]},
-    {vs: [0,1,2,3]},
-    {vs: [0,1,5,4]},
-    {vs: [2,3,7,6]},
-    {vs: [1,2,6,5]},
-    {vs: [0,3,7,4]}
 ]
 
 // Adjusts Triangle Tessellation in-between gaps (amount = 0.5 to 1)
@@ -234,6 +164,28 @@ function getGridResolution(camX, camY, camZ, objX, objY, objZ) {
     return grid;
 }
 
+function render(){
+    //console.log("CAMERA: ("+dx+", "+dy+", "+dz+") PITCH:"+camPitch+" YAW:"+camYaw); //THIS TRACKS CAMERA POS&PITCH&YAW
+    clear();
+    for (const v of vs) {
+        let transformed = translate_xyz(v, dx, dy, dz);
+        transformed = rotate_xz(transformed, camYaw);
+        transformed = rotate_yz(transformed, camPitch);
+
+        //Near-plane clipping - this removes hallucination mirror effect when going opposite to object
+        const NEAR_PLANE = 0.1; 
+        if (transformed.z < NEAR_PLANE) {
+            continue;
+        }
+
+        point(screen(project(transformed)));
+    }
+    const grid = getGridResolution(dx, dy, dz, 0, 0, 0); // TO DO - change 0s to obj xyz
+    for (const f of Block.faces) {
+        drawFace(f,img,grid,grid);
+    }
+}
+
 // Camera Position
 let dz = 2;
 let dy = 0;
@@ -247,18 +199,12 @@ const MAX_GRID = 6;
 const MIN_DIST = 2;
 const MAX_DIST = 6;
 
+const block = new Block({x:0,y:0,z:0},"Dirt");
 const img = new Image();
-img.src = "./textures/dirt.png";
+img.src = block.texture;
 // When upscaled, texture becomes blurry.
 ctx.imageSmoothingEnabled = false;
-
-clear()
-for (const v of vs){
-    point(screen(project(translate_xyz(v,dx,dy,dz))));
-}
-for (const f of faces) {
-    drawFace(f,img,2,2);
-}
+render();
 
 const keys = {
     Space: false,
@@ -341,25 +287,7 @@ function updateMovement() {
     }
 
     if (moved || mouseMoved) {
-        //console.log("CAMERA: ("+dx+", "+dy+", "+dz+") PITCH:"+camPitch+" YAW:"+camYaw); //THIS TRACKS CAMERA POS&PITCH&YAW
-        clear();
-        for (const v of vs) {
-            let transformed = translate_xyz(v, dx, dy, dz);
-            transformed = rotate_xz(transformed, camYaw);
-            transformed = rotate_yz(transformed, camPitch);
-
-            //Near-plane clipping - this removes hallucination mirror effect when going opposite to object
-            const NEAR_PLANE = 0.1; 
-            if (transformed.z < NEAR_PLANE) {
-                continue;
-            }
-
-            point(screen(project(transformed)));
-        }
-        const grid = getGridResolution(dx, dy, dz, 0, 0, 0);
-        for (const f of faces) {
-            drawFace(f,img,grid,grid);
-        }
+        render();
         mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
