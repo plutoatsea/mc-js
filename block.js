@@ -33,8 +33,12 @@ class Block{
     ];
     // Binds the Verts to make faces .aka quad.
     static faces = [
-        {vs: [4,5,6,7]}, {vs: [0,1,2,3]}, {vs: [0,1,5,4]}, 
-        {vs: [2,3,7,6]}, {vs: [1,2,6,5]}, {vs: [0,3,7,4]}
+        {vs:[4,7,6,5], dir:{x:0,y:0,z:-1}}, // back
+        {vs:[0,1,2,3], dir:{x:0,y:0,z:1}},  // front
+        {vs:[4,5,1,0], dir:{x:0,y:1,z:0}},  // top
+        {vs:[3,2,6,7], dir:{x:0,y:-1,z:0}}, // bottom
+        {vs:[5,6,2,1], dir:{x:-1,y:0,z:0}}, // left
+        {vs:[0,3,7,4], dir:{x:1,y:0,z:0}}   // right
     ];
     // Texture Paths
     static texture_paths = {

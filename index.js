@@ -61,85 +61,62 @@ function bilerp(p0, p1, p2, p3, u, v){
 }
 
 // Draws a texture and splits into (cols*rows*2) triangles per quad
-function drawFace(block, face, textureImage, cols, rows) {
+function drawFace(transformedVs, face, textureImage, cols, rows) {
     const NEAR_PLANE = 0.1;
-    const vs = block.vs;
-    // all 4 points are transformed to 3D camera space
-    const transformedPoints = face.vs.map(i => {
-        return rotate_yz(rotate_xz(translate_xyz(vs[i], dx, dy, dz), camYaw), camPitch);
-    });
-    // Near-plane clipping safety check
-    for (const p of transformedPoints) {
-        if (p.z < NEAR_PLANE) return;
-    }
-    // ADAPTIVE 3D CULLING :))))!!!
-    // Vector A (from point 0 to point 1)
-    const ax = transformedPoints[1].x - transformedPoints[0].x;
-    const ay = transformedPoints[1].y - transformedPoints[0].y;
-    const az = transformedPoints[1].z - transformedPoints[0].z;
-    // Vector B (from point 0 to point 3)
-    const bx = transformedPoints[3].x - transformedPoints[0].x;
-    const by = transformedPoints[3].y - transformedPoints[0].y;
-    const bz = transformedPoints[3].z - transformedPoints[0].z;
-    // 3D Cross Product to find the face's perpendicular Normal Vector (Nx, Ny, Nz)
-    let nx = ay * bz - az * by;
-    let ny = az * bx - ax * bz;
-    let nz = ax * by - ay * bx;
 
-    // Winding-order safety check in order to verify this face's normal actually points
-    // away from the cube's own object-space center, using untransformed vertices.
-    const trueCenter = vs.reduce((acc, v) => ({
-        x: acc.x + v.x / vs.length,
-        y: acc.y + v.y / vs.length,
-        z: acc.z + v.z / vs.length
-    }), { x: 0, y: 0, z: 0 });
+    const transformedPoints = face.vs.map(i => transformedVs[i]);
 
-    const localP0 = vs[face.vs[0]];
-    const localP1 = vs[face.vs[1]];
-    const localP3 = vs[face.vs[3]];
-    const lax = localP1.x - localP0.x, lay = localP1.y - localP0.y, laz = localP1.z - localP0.z;
-    const lbx = localP3.x - localP0.x, lby = localP3.y - localP0.y, lbz = localP3.z - localP0.z;
-    const lnx = lay * lbz - laz * lby;
-    const lny = laz * lbx - lax * lbz;
-    const lnz = lax * lby - lay * lbx;
-    const lcx = (localP0.x + localP1.x + localP3.x) / 3 - trueCenter.x;
-    const lcy = (localP0.y + localP1.y + localP3.y) / 3 - trueCenter.y;
-    const lcz = (localP0.z + localP1.z + localP3.z) / 3 - trueCenter.z;
-    if (lnx * lcx + lny * lcy + lnz * lcz < 0) {
-        nx = -nx; ny = -ny; nz = -nz;
-    }
-
-    // Calculate the center point of the face relative to the camera
-    const cx = (transformedPoints[0].x + transformedPoints[1].x + transformedPoints[2].x + transformedPoints[3].x) / 4;
-    const cy = (transformedPoints[0].y + transformedPoints[1].y + transformedPoints[2].y + transformedPoints[3].y) / 4;
-    const cz = (transformedPoints[0].z + transformedPoints[1].z + transformedPoints[2].z + transformedPoints[3].z) / 4;
-    // 3D Dot Product: Compares the direction of the face to the camera's view line
-    const dotProduct = nx * cx + ny * cy + nz * cz;
-    // If the dot product is positive, the face is pointing away from the camera lens. Skip!!!!
-    if (dotProduct > 0) {
-        return;
+    for (const p of transformedPoints){
+        if (p.z < NEAR_PLANE){
+            return;
+        }
     }
     const pts = transformedPoints.map(p => screen(project(p)));
 
     const w = textureImage.width;
     const h = textureImage.height;
-    const s0 = { x: 0, y: 0 }, s1 = { x: w, y: 0 }, s2 = { x: w, y: h }, s3 = { x: 0, y: h };
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const u0 = col / cols;
-            const u1 = (col + 1) / cols;
-            const v0 = row / rows;
-            const v1 = (row + 1) / rows;
-            const dTL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v0);
-            const dTR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v0);
-            const dBR = bilerp(pts[0], pts[1], pts[2], pts[3], u1, v1);
-            const dBL = bilerp(pts[0], pts[1], pts[2], pts[3], u0, v1);
-            const sTL = bilerp(s0, s1, s2, s3, u0, v0);
-            const sTR = bilerp(s0, s1, s2, s3, u1, v0);
-            const sBR = bilerp(s0, s1, s2, s3, u1, v1);
-            const sBL = bilerp(s0, s1, s2, s3, u0, v1);
-            drawTriangle(textureImage, sTL.x, sTL.y, sTR.x, sTR.y, sBR.x, sBR.y, dTL.x, dTL.y, dTR.x, dTR.y, dBR.x, dBR.y);
-            drawTriangle(textureImage, sTL.x, sTL.y, sBR.x, sBR.y, sBL.x, sBL.y, dTL.x, dTL.y, dBR.x, dBR.y, dBL.x, dBL.y);
+
+    const s0 = {x:0,y:0};
+    const s1 = {x:w,y:0};
+    const s2 = {x:w,y:h};
+    const s3 = {x:0,y:h};
+
+    for(let row=0; row<rows; row++){
+        for(let col=0; col<cols; col++){
+            const u0 = col/cols;
+            const u1 = (col+1)/cols;
+            const v0 = row/rows;
+            const v1 = (row+1)/rows;
+
+            const dTL = bilerp(pts[0],pts[1],pts[2],pts[3],u0,v0);
+            const dTR = bilerp(pts[0],pts[1],pts[2],pts[3],u1,v0);
+            const dBR = bilerp(pts[0],pts[1],pts[2],pts[3],u1,v1);
+            const dBL = bilerp(pts[0],pts[1],pts[2],pts[3],u0,v1);
+
+            const sTL = bilerp(s0,s1,s2,s3,u0,v0);
+            const sTR = bilerp(s0,s1,s2,s3,u1,v0);
+            const sBR = bilerp(s0,s1,s2,s3,u1,v1);
+            const sBL = bilerp(s0,s1,s2,s3,u0,v1);
+
+            drawTriangle(textureImage,
+                sTL.x,sTL.y,
+                sTR.x,sTR.y,
+                sBR.x,sBR.y,
+
+                dTL.x,dTL.y,
+                dTR.x,dTR.y,
+                dBR.x,dBR.y
+            );
+
+            drawTriangle(textureImage,
+                sTL.x,sTL.y,
+                sBR.x,sBR.y,
+                sBL.x,sBL.y,
+
+                dTL.x,dTL.y,
+                dBR.x,dBR.y,
+                dBL.x,dBL.y
+            );
         }
     }
 }
@@ -162,28 +139,79 @@ function getGridResolution(camX, camY, camZ, {x: objX, y: objY, z: objZ}) {
     return grid;
 }
 
-function render(block){
-    //console.log("CAMERA: ("+dx+", "+dy+", "+dz+") PITCH:"+camPitch+" YAW:"+camYaw); //THIS TRACKS CAMERA POS&PITCH&YAW
+function render(blocks){
     clear();
-    for (const v of block.vs) {
-        let transformed = translate_xyz(v, dx, dy, dz);
-        transformed = rotate_xz(transformed, camYaw);
-        transformed = rotate_yz(transformed, camPitch);
+    // Build lookup table for neighbor culling
+    const world = new Map();
 
-        //Near-plane clipping - this removes hallucination mirror effect when going opposite to object
-        const NEAR_PLANE = 0.1; 
-        if (transformed.z < NEAR_PLANE) {
+    for(const b of blocks){
+        const p = b.position;
+        world.set(`${p.x},${p.y},${p.z}`, true);
+    }
+
+    for(const block of blocks){
+
+        // Block center culling
+        let center = translate_xyz(block.position,dx,dy,dz);
+        center = rotate_xz(center,camYaw);
+        center = rotate_yz(center,camPitch);
+        if(center.z < -1){
             continue;
         }
 
-        point(screen(project(transformed)));
-    }
-    const grid = getGridResolution(dx, dy, dz, block.position); // TO DO - dy,dx,dz to camera.pos
-    for (const f of Block.faces) {
-        drawFace(block,f,img,grid,grid);
+        // Transform vertices
+        const transformedVs = block.vs.map(v=>{
+            let p = translate_xyz(v,dx,dy,dz);
+            p = rotate_xz(p,camYaw);
+            p = rotate_yz(p,camPitch);
+            return p;
+        });
+
+        // Vert Points
+        // for(const v of transformedVs){
+        //     if(v.z > 0.1)
+        //         point(screen(project(v)));
+        // }
+
+        //Grid Res to find how many triangles to put on a texture
+        const grid = getGridResolution(dx,dy,dz,block.position);
+
+        for(const face of Block.faces){
+            // Neighbor face culling
+            const nx = block.position.x + face.dir.x;
+            const ny = block.position.y + face.dir.y;
+            const nz = block.position.z + face.dir.z;
+
+            if(world.has(`${nx},${ny},${nz}`)){
+                continue;
+            }
+
+            // Backface culling
+            const p0 = transformedVs[face.vs[0]];
+            const p1 = transformedVs[face.vs[1]];
+            const p2 = transformedVs[face.vs[2]];
+
+            const ax = p2.x - p0.x;
+            const ay = p2.y - p0.y;
+            const az = p2.z - p0.z;
+
+            const bx = p1.x - p0.x;
+            const by = p1.y - p0.y;
+            const bz = p1.z - p0.z;
+
+            const nxFace = ay*bz-az*by;
+            const nyFace = az*bx-ax*bz;
+            const nzFace = ax*by-ay*bx;
+
+            const dot = nxFace*p0.x+nyFace*p0.y+nzFace*p0.z;
+            if(dot <= 0){
+                continue;
+            }
+
+            drawFace(transformedVs,face,img,grid,grid);
+        }
     }
 }
-
 // Camera Position
 let dz = 2;
 let dy = 0;
@@ -197,12 +225,19 @@ const MAX_GRID = 6;
 const MIN_DIST = 2;
 const MAX_DIST = 6;
 
-const block = new Block({x:0,y:0,z:0},"Dirt");
+const blockz = [];
+for (let x = 0; x < 16; x++) {
+    for (let z = 0; z < 16; z++) {
+        blockz.push(new Block({ x: x, y: 0, z: z }, "Grass"));
+    }
+}
+
+//const blockz = [new Block({x:0,y:0,z:0},"Grass"),new Block({x:1,y:0,z:0},"Grass"),new Block({x:0,y:0,z:1},"Grass"),new Block({x:1,y:0,z:1},"Grass")];
 const img = new Image();
-img.src = block.texture;
+img.src = blockz[0].texture;
 // When upscaled, texture becomes blurry.
 ctx.imageSmoothingEnabled = false;
-render(block);
+render(blockz);
 
 const keys = {
     Space: false,
@@ -285,7 +320,7 @@ function updateMovement() {
     }
 
     if (moved || mouseMoved) {
-        render(block);
+        render(blockz);
         mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
