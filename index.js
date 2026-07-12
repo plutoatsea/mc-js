@@ -6,6 +6,9 @@ game.height = 400;
 
 const ctx = game.getContext("2d")
 
+// Lookup table for neighbor culling & raycasting (kept in outer scope so aiming can reuse it)
+let world = new Map();
+
 // Clears Screen (Enables Animations, Movement...)
 function clear(){
     ctx.fillStyle = BACKGROUND
@@ -142,7 +145,7 @@ function getGridResolution(camX, camY, camZ, {x: objX, y: objY, z: objZ}) {
 function render(blocks){
     clear();
     // Build lookup table for neighbor culling
-    const world = new Map();
+    world.clear();
 
     for(const b of blocks){
         const p = b.position;
@@ -212,9 +215,139 @@ function render(blocks){
         }
     }
 }
+
+// Casts a ray from the camera along the look direction to find the targeted block
+function raycast(maxDist = 1, step = 0.05){
+    const camX = -dx, camY = -dy, camZ = -dz;
+
+    // Forward direction = inverse of render()'s view rotations, computed with the same
+    // rotate functions (run backwards, with negated angles) so it always matches exactly
+    let forward = { x: 0, y: 1, z: 5 };
+    forward = rotate_yz(forward, -camPitch);
+    forward = rotate_xz(forward, -camYaw);
+
+    for(let t = 0; t < maxDist; t += step){
+        const px = camX + forward.x * t;
+        const py = camY + forward.y * t;
+        const pz = camZ + forward.z * t;
+
+        const bx = Math.floor(px);
+        const by = Math.floor(py);
+        const bz = Math.floor(pz);
+
+        if(world.has(`${bx},${by},${bz}`)){
+            return blockz.find(b => b.position.x === bx && b.position.y === by && b.position.z === bz);
+        }
+    }
+    return null;
+}
+
+// Draws a crosshair in the middle of the screen to help aim at blocks
+function drawCrosshair(){
+    const cx = game.width / 2;
+    const cy = game.height / 2;
+    const size = 8;
+
+    ctx.save();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - size, cy);
+    ctx.lineTo(cx + size, cy);
+    ctx.moveTo(cx, cy - size);
+    ctx.lineTo(cx, cy + size);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Draws a wireframe outline around the block currently under the crosshair
+function drawSelection(block){
+    if(!block) return;
+
+    const transformedVs = block.vs.map(v=>{
+        let p = translate_xyz(v,dx,dy,dz);
+        p = rotate_xz(p,camYaw);
+        p = rotate_yz(p,camPitch);
+        return p;
+    });
+
+    ctx.save();
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 0.2;
+
+    for(const face of Block.faces){
+        const pts = face.vs.map(i => transformedVs[i]);
+        if(pts.some(p => p.z < 0.1)) continue;
+
+        const screenPts = pts.map(p => screen(project(p)));
+
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0].x, screenPts[0].y);
+        for(let i = 1; i < screenPts.length; i++){
+            ctx.lineTo(screenPts[i].x, screenPts[i].y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// Break animation frames (crack overlay drawn on top of the targeted block while breaking)
+const breakTextures = [];
+for(let i = 0; i < 10; i++){
+    const t = new Image();
+    t.src = `assets/textures/blocks/b_${i}.png`;
+    breakTextures.push(t);
+}
+
+// Draws the crack overlay texture on the visible faces of the block being broken
+function drawBreakOverlay(block, progress){
+    const frame = Math.min(breakTextures.length - 1, Math.floor(progress * breakTextures.length));
+    const crackImg = breakTextures[frame];
+    if(!crackImg.complete) return;
+
+    const transformedVs = block.vs.map(v=>{
+        let p = translate_xyz(v,dx,dy,dz);
+        p = rotate_xz(p,camYaw);
+        p = rotate_yz(p,camPitch);
+        return p;
+    });
+
+    for(const face of Block.faces){
+        const p0 = transformedVs[face.vs[0]];
+        const p1 = transformedVs[face.vs[1]];
+        const p2 = transformedVs[face.vs[2]];
+        // Skip faces behind the camera, same as render()'s near-plane check
+        if(p0.z < 0.1 || p1.z < 0.1 || p2.z < 0.1) continue;
+
+        // Backface culling, mirrors the check in render()
+        const ax = p2.x - p0.x, ay = p2.y - p0.y, az = p2.z - p0.z;
+        const bx = p1.x - p0.x, by = p1.y - p0.y, bz = p1.z - p0.z;
+        const nxFace = ay*bz-az*by;
+        const nyFace = az*bx-ax*bz;
+        const nzFace = ax*by-ay*bx;
+        const dot = nxFace*p0.x+nyFace*p0.y+nzFace*p0.z;
+        if(dot <= 0) continue;
+
+        drawFace(transformedVs, face, crackImg, 2, 2);
+    }
+}
+
+// Draws all aiming/breaking UI on top of the rendered scene
+function drawHUD(){
+    drawSelection(selected);
+    drawCrosshair();
+
+    if(breaking && selected){
+        const progress = Math.min((performance.now() - breakStart) / BREAK_TIME, 1);
+        drawBreakOverlay(selected, progress);
+    }
+}
+
 // Camera Position
 let dz = 2;
-let dy = 0;
+let dy = -2.5;
 let dx = 0;
 let camYaw = 0;
 let camPitch = 0;
@@ -224,6 +357,13 @@ const MIN_GRID = 0.5;
 const MAX_GRID = 6;
 const MIN_DIST = 2;
 const MAX_DIST = 6;
+
+// Aiming / Breaking State
+let selected = null;
+let breaking = false;
+let breakTarget = null;
+let breakStart = 0;
+const BREAK_TIME = 500; //Time to break Block (TODO CHANGE THIS TO CONFIGURE!! >:))
 
 const blockz = [];
 for (let x = 0; x < 16; x++) {
@@ -238,6 +378,7 @@ img.src = blockz[0].texture;
 // When upscaled, texture becomes blurry.
 ctx.imageSmoothingEnabled = false;
 render(blockz);
+drawHUD();
 
 const keys = {
     Space: false,
@@ -245,7 +386,7 @@ const keys = {
     W: false,
     S: false,
     A: false,
-    D: false
+    D: false,
 };
 
 document.addEventListener('keydown', (e) => {
@@ -268,7 +409,7 @@ document.addEventListener('keyup', (e) => {
 
 function updateMovement() {
     let moved = false;
-    let speed = 0.09;
+    let speed = 0.15;
     // Relative Directional Intent (Sync movement with camera)
     let moveX = 0;
     let moveZ = 0;
@@ -319,8 +460,30 @@ function updateMovement() {
         moved = true;
     }
 
-    if (moved || mouseMoved) {
+    // Find which block(if any) the player is currently aiming at
+    selected = raycast();
+
+    // Cancel breaking if the player looked away from the block they were breaking
+    if(breaking && selected !== breakTarget){
+        breaking = false;
+        breakTarget = null;
+    }
+
+    // Advance the break timer and remove the block once it completes
+    if(breaking){
+        const progress = (performance.now() - breakStart) / BREAK_TIME;
+        if(progress >= 1){
+            const idx = blockz.indexOf(breakTarget);
+            if(idx !== -1) blockz.splice(idx, 1);
+            breaking = false;
+            breakTarget = null;
+            moved = true;
+        }
+    }
+
+    if (moved || mouseMoved || breaking) {
         render(blockz);
+        drawHUD();
         mouseMoved = false;
     }
     requestAnimationFrame(updateMovement);
@@ -332,6 +495,21 @@ game.addEventListener('click', () => {
     if (document.pointerLockElement !== game) {
         game.requestPointerLock();
     }
+});
+
+// Starts breaking the block currently under the crosshair
+document.addEventListener('mousedown', () => {
+    if (document.pointerLockElement === game && selected) {
+        breaking = true;
+        breakTarget = selected;
+        breakStart = performance.now();
+    }
+});
+
+// Cancels breaking if the mouse button is released
+document.addEventListener('mouseup', () => {
+    breaking = false;
+    breakTarget = null;
 });
 
 // Moves the Camera (Gives the Pitch & Yaw)
