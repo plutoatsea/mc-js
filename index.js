@@ -1,8 +1,8 @@
 let BACKGROUND = "#7FCCFF" // Sky Color (Bright Day)
 let FOREGROUND = "#ff5050"
 
-game.width = 400;
-game.height = 400;
+game.width = 800;
+game.height = 800;
 
 const ctx = game.getContext("2d")
 
@@ -217,12 +217,12 @@ function render(blocks){
 }
 
 // Casts a ray from the camera along the look direction to find the targeted block
-function raycast(maxDist = 1, step = 0.05){
+function raycast(maxDist = 6, step = 0.09){
     const camX = -dx, camY = -dy, camZ = -dz;
 
     // Forward direction = inverse of render()'s view rotations, computed with the same
     // rotate functions (run backwards, with negated angles) so it always matches exactly
-    let forward = { x: 0, y: 1, z: 5 };
+    let forward = { x: 0, y: 0, z: 1 };
     forward = rotate_yz(forward, -camPitch);
     forward = rotate_xz(forward, -camYaw);
 
@@ -231,9 +231,9 @@ function raycast(maxDist = 1, step = 0.05){
         const py = camY + forward.y * t;
         const pz = camZ + forward.z * t;
 
-        const bx = Math.floor(px);
-        const by = Math.floor(py);
-        const bz = Math.floor(pz);
+        const bx = Math.floor(px+.5);
+        const by = Math.floor(py+.5);
+        const bz = Math.floor(pz+.5);
 
         if(world.has(`${bx},${by},${bz}`)){
             return blockz.find(b => b.position.x === bx && b.position.y === by && b.position.z === bz);
