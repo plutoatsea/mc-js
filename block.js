@@ -44,6 +44,9 @@ class Block{
     static texture_paths = {
         'Grass': 'assets/textures/blocks/grass.png',
         'Stone': 'assets/textures/blocks/stone.png',
-        'Dirt':  'assets/textures/blocks/dirt.png'
+        'Sand': 'assets/textures/blocks/sand.png',
+        'Dirt':  'assets/textures/blocks/dirt.png',
+        'Wood':  'assets/textures/blocks/wood.png',
+        'Cobble Stone': 'assets/textures/blocks/cobble_stone.png'
     };
 }

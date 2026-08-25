@@ -211,7 +211,7 @@ function render(blocks){
                 continue;
             }
 
-            drawFace(transformedVs,face,img,grid,grid);
+            drawFace(transformedVs,face,getTexture(block.texture),grid,grid);
         }
     }
 }
@@ -236,9 +236,13 @@ function raycast(maxDist = 6, step = 0.09){
         const bz = Math.floor(pz+.5);
 
         if(world.has(`${bx},${by},${bz}`)){
+            placePos = prevX !== null ? {x:prevX,y:prevY,z:prevZ} : null;
             return blockz.find(b => b.position.x === bx && b.position.y === by && b.position.z === bz);
         }
+
+        prevX = bx; prevY = by; prevZ = bz;
     }
+    placePos = null;
     return null;
 }
 
@@ -338,11 +342,29 @@ function drawBreakOverlay(block, progress){
 function drawHUD(){
     drawSelection(selected);
     drawCrosshair();
+    drawHotbar();
 
     if(breaking && selected){
         const progress = Math.min((performance.now() - breakStart) / BREAK_TIME, 1);
         drawBreakOverlay(selected, progress);
     }
+}
+
+//Name selection from block scroll selection
+function drawHotbar(){
+    const type = blockTypes[selectedTypeIndex];
+    const icon = getTexture(Block.texture_paths[type]);
+    const x = 20, y = game.height - 44;
+    const size = 24;
+
+    ctx.save();
+    if(icon.complete){
+        ctx.drawImage(icon, x, y, size, size);
+    }
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "20px sans-serif";
+    ctx.fillText(type, x + size + 10, y + size - 4);
+    ctx.restore();
 }
 
 // Camera Position
@@ -365,6 +387,11 @@ let breakTarget = null;
 let breakStart = 0;
 const BREAK_TIME = 500; //Time to break Block (TODO CHANGE THIS TO CONFIGURE!! >:))
 
+// Place block
+let placePos = null;
+const blockTypes = Object.keys(Block.texture_paths); //['Grass','Stone','Dirt'....]
+let selectedTypeIndex = 0;
+
 const blockz = [];
 for (let x = 0; x < 16; x++) {
     for (let z = 0; z < 16; z++) {
@@ -375,6 +402,15 @@ for (let x = 0; x < 16; x++) {
 //const blockz = [new Block({x:0,y:0,z:0},"Grass"),new Block({x:1,y:0,z:0},"Grass"),new Block({x:0,y:0,z:1},"Grass"),new Block({x:1,y:0,z:1},"Grass")];
 const img = new Image();
 img.src = blockz[0].texture;
+const textureCache = {};
+function getTexture(path){
+    if(!textureCache[path]){
+        const im = new Image();
+        im.src = path;
+        textureCache[path] = im;
+    }
+    return textureCache[path];
+}
 // When upscaled, texture becomes blurry.
 ctx.imageSmoothingEnabled = false;
 render(blockz);
@@ -495,6 +531,33 @@ game.addEventListener('click', () => {
     if (document.pointerLockElement !== game) {
         game.requestPointerLock();
     }
+});
+
+// Adds Block "grass"
+game.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('mousedown', (e) => {
+    if (document.pointerLockElement !== game) return;
+
+    if (e.button === 0 && selected) {
+        breaking = true;
+        breakTarget = selected;
+        breakStart = performance.now();
+    }
+
+    if (e.button === 2 && placePos && !world.has(`${placePos.x},${placePos.y},${placePos.z}`)) {
+        blockz.push(new Block(placePos, blockTypes[selectedTypeIndex]));
+        render(blockz);
+        drawHUD();
+    }
+});
+
+//Scroll to change blocks to place
+game.addEventListener('wheel', (e) => {
+    if (document.pointerLockElement !== game) return;
+    e.preventDefault();
+    selectedTypeIndex = (selectedTypeIndex + (e.deltaY > 0 ? 1 : -1) + blockTypes.length) % blockTypes.length;
+    render(blockz);
+    drawHUD();
 });
 
 // Starts breaking the block currently under the crosshair
